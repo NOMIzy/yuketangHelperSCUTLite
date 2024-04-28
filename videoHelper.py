@@ -6,14 +6,14 @@ import time
 import requests
 import re
 import json
-
+import threading
 # 以下的csrftoken和sessionid需要改成自己登录后的cookie中对应的字段！！！！而且脚本需在登录雨课堂状态下使用
 # 登录上雨课堂，然后按F12-->选Application-->找到雨课堂的cookies，寻找csrftoken、sessionid、university_id字段，并复制到下面两行即可
 csrftoken = ""  # 需改成自己的
 sessionid = ""  # 需改成自己的
-university_id = ""  # 需改成自己的
-url_root = ""  # 按需修改域名 example:https://*****.yuketang.cn/
-learning_rate = 4  # 学习速率 我觉得默认的这个就挺好的
+university_id = "2627"  # 需改成本校，华工目前是2627
+url_root = "https://scut.yuketang.cn/"  # 按学校修改域名 example:https://*****.yuketang.cn/
+learning_rate = 4  # 学习速率 
 
 # 以下字段不用改，下面的代码也不用改动
 user_id = ""
@@ -44,8 +44,8 @@ def one_video_watcher(video_id, video_name, cid, user_id, classroomid, skuid):
     classroomid = str(classroomid)
     url = url_root + "video-log/heartbeat/"
     get_url = url_root + "video-log/get_video_watch_progress/?cid=" + str(
-        cid) + "&user_id=" + user_id + "&classroom_id=" + classroomid + "&video_type=video&vtype=rate&video_id=" + str(
-        video_id) + "&snapshot=1&term=latest&uv_id=" + university_id + ""
+        cid) + "&user_id=" + str(user_id) + "&classroom_id=" + str(classroomid) + "&video_type=video&vtype=rate&video_id=" + str(
+        video_id) + "&snapshot=1&term=latest&uv_id=" + str(university_id) + ""
     progress = requests.get(url=get_url, headers=headers)
     if_completed = '0'
     try:
@@ -161,11 +161,22 @@ if __name__ == "__main__":
     # 首先要获取用户的个人ID，即user_id,该值在查询用户的视频进度时需要使用
     user_id_url = url_root + "edu_admin/check_user_session/"
     id_response = requests.get(url=user_id_url, headers=headers)
+
+
+    # 解析响应
     try:
-        user_id = re.search(r'"user_id":(.+?)}', id_response.text).group(1).strip()
-    except:
-        print("也许是网路问题，获取不了user_id,请试着重新运行")
-        raise Exception("也许是网路问题，获取不了user_id,请试着重新运行!!! please re-run this program!")
+        # 使用正则表达式提取用户ID
+        #user_id = re.search(r'"user_id":(\d+)', id_response.text).group(1)
+        print(id_response.text)
+        response=json.loads(id_response.text)
+        user_id=response['data']["user_id"]
+        print("用户ID:", user_id)
+    except AttributeError:
+        print("无法从响应中提取用户ID。响应内容:", id_response.text)
+    except Exception as e:
+        print("发生异常:", e)
+
+
 
     # 然后要获取教室id
     get_classroom_id = url_root + "mooc-api/v1/lms/user/user-courses/?status=1&page=1&no_page=1&term=latest&uv_id=" + university_id + ""
@@ -205,12 +216,15 @@ if __name__ == "__main__":
                                       ins["sku_id"])
         else:
             flag = False    # 输入合法则不需要循环
+            threads = []
             # 指定序号的课程刷一遍
             number = int(number) - 1
             homework_dic = get_videos_ids(your_courses[number]["course_name"], your_courses[number]["classroom_id"],
-                                          your_courses[number]["course_sign"])
+                                        your_courses[number]["course_sign"])
             for one_video in homework_dic.items():
-                one_video_watcher(one_video[0], one_video[1], your_courses[number]["course_id"], user_id,
-                                  your_courses[number]["classroom_id"],
-                                  your_courses[number]["sku_id"])
+                t = threading.Thread(target=one_video_watcher, args=(one_video[0], one_video[1], your_courses[number]["course_id"], user_id,
+                                your_courses[number]["classroom_id"],
+                                your_courses[number]["sku_id"]))
+                t.start()
+                threads.append(t)
         print("搞定啦")
